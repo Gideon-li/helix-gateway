@@ -1,1 +1,17 @@
-"""Helix gateway - Python (OpenAI SDK)\n\npip install openai\n"""\nimport os\nfrom openai import OpenAI\n\nclient = OpenAI(\n    api_key=os.environ[\"HELIX_API_KEY\"],\n    base_url=os.environ.get(\"HELIX_BASE_URL\", \"http://127.0.0.1:8080/v1\"),\n)\n\nresp = client.chat.completions.create(\n    model=\"qwen3.8-flash\",\n    messages=[{\"role\": \"user\", \"content\": \"hello\"}],\n)\nprint(resp.choices[0].message.content)\n
+"""Helix gateway - Python (OpenAI SDK)
+
+pip install openai
+"""
+import os
+from openai import OpenAI
+
+client = OpenAI(
+    api_key=os.environ["HELIX_API_KEY"],
+    base_url=os.environ.get("HELIX_BASE_URL", "http://127.0.0.1:8080/v1"),
+)
+
+resp = client.chat.completions.create(
+    model="qwen3.8-flash",
+    messages=[{"role": "user", "content": "hello"}],
+)
+print(resp.choices[0].message.content)
