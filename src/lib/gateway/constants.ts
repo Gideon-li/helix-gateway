@@ -1,10 +1,6 @@
 export const APP_NAME = "Helix";
 export const APP_NAME_ZH = "智枢";
 
-export const ADMIN_EMAIL = "haopeng@helix.dev";
-export const ADMIN_PASSWORD = "Helix-Li#8kQ2mN7p";
-export const ADMIN_NAME = "Haopeng Li";
-
 export const KEY_PREFIX = "sk-hx-";
 
 export const PROVIDER_PRESETS = [

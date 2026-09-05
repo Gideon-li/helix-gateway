@@ -15,6 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as PlaygroundRouteImport } from './routes/playground'
 import { Route as ProvidersRouteImport } from './routes/providers'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as V1ModelsRouteImport } from './routes/v1/models'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as V1ChatCompletionsRouteImport } from './routes/v1/chat/completions'
@@ -49,6 +50,11 @@ const ProvidersRoute = ProvidersRouteImport.update({
   path: '/providers',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const V1ModelsRoute = V1ModelsRouteImport.update({
   id: '/v1/models',
   path: '/v1/models',
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/logs': typeof LogsRoute
   '/playground': typeof PlaygroundRoute
   '/providers': typeof ProvidersRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/v1/models': typeof V1ModelsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/v1/chat/completions': typeof V1ChatCompletionsRoute
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/logs': typeof LogsRoute
   '/playground': typeof PlaygroundRoute
   '/providers': typeof ProvidersRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/v1/models': typeof V1ModelsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/v1/chat/completions': typeof V1ChatCompletionsRoute
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/logs': typeof LogsRoute
   '/playground': typeof PlaygroundRoute
   '/providers': typeof ProvidersRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/v1/models': typeof V1ModelsRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/v1/chat/completions': typeof V1ChatCompletionsRoute
@@ -108,6 +117,7 @@ export interface FileRouteTypes {
     | '/logs'
     | '/playground'
     | '/providers'
+    | '/reset-password'
     | '/v1/models'
     | '/api/auth/$'
     | '/v1/chat/completions'
@@ -119,6 +129,7 @@ export interface FileRouteTypes {
     | '/logs'
     | '/playground'
     | '/providers'
+    | '/reset-password'
     | '/v1/models'
     | '/api/auth/$'
     | '/v1/chat/completions'
@@ -130,6 +141,7 @@ export interface FileRouteTypes {
     | '/logs'
     | '/playground'
     | '/providers'
+    | '/reset-password'
     | '/v1/models'
     | '/api/auth/$'
     | '/v1/chat/completions'
@@ -142,6 +154,7 @@ export interface RootRouteChildren {
   LogsRoute: typeof LogsRoute
   PlaygroundRoute: typeof PlaygroundRoute
   ProvidersRoute: typeof ProvidersRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
   V1ModelsRoute: typeof V1ModelsRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   V1ChatCompletionsRoute: typeof V1ChatCompletionsRoute
@@ -191,6 +204,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProvidersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/v1/models': {
       id: '/v1/models'
       path: '/v1/models'
@@ -222,6 +242,7 @@ const rootRouteChildren: RootRouteChildren = {
   LogsRoute: LogsRoute,
   PlaygroundRoute: PlaygroundRoute,
   ProvidersRoute: ProvidersRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
   V1ModelsRoute: V1ModelsRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   V1ChatCompletionsRoute: V1ChatCompletionsRoute,

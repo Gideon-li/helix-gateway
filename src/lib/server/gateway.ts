@@ -1,22 +1,27 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { ADMIN_EMAIL, ADMIN_NAME, ADMIN_PASSWORD } from "@/lib/gateway/constants";
 
-export const bootstrapAdmin = createServerFn({ method: "POST" }).handler(async () => {
-  const { auth } = await import("@/lib/auth/server");
-  try {
-    await auth.api.signUpEmail({
-      body: {
-        email: ADMIN_EMAIL,
-        password: ADMIN_PASSWORD,
-        name: ADMIN_NAME,
-      },
-    });
-    return { created: true };
-  } catch {
-    return { created: false };
-  }
+export const migrateAdminEmail = createServerFn({ method: "POST" }).handler(async () => {
+  const { migrateAdminMailbox } = await import("@/lib/gateway/password-reset");
+  return migrateAdminMailbox();
 });
+
+export const requestPasswordReset = createServerFn({ method: "POST" })
+  .validator((input: { email: string }) => ({ email: String(input.email ?? "").trim() }))
+  .handler(async ({ data }) => {
+    const { requestPasswordReset: sendReset } = await import("@/lib/gateway/password-reset");
+    return sendReset(data.email);
+  });
+
+export const completePasswordReset = createServerFn({ method: "POST" })
+  .validator((input: { token: string; password: string }) => ({
+    token: String(input.token ?? "").trim(),
+    password: String(input.password ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { completePasswordReset: finish } = await import("@/lib/gateway/password-reset");
+    return finish(data.token, data.password);
+  });
 
 export const loadWorkspace = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
