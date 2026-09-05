@@ -1,9 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
+import type { AssignableRole } from "@/lib/gateway/roles";
 
-export const migrateAdminEmail = createServerFn({ method: "POST" }).handler(async () => {
-  const { migrateAdminMailbox } = await import("@/lib/gateway/password-reset");
-  return migrateAdminMailbox();
+export const ensureAccounts = createServerFn({ method: "POST" }).handler(async () => {
+  const members = await import("@/lib/gateway/members");
+  return members.ensureAccounts();
 });
 
 export const requestPasswordReset = createServerFn({ method: "POST" })
@@ -23,35 +24,114 @@ export const completePasswordReset = createServerFn({ method: "POST" })
     return finish(data.token, data.password);
   });
 
+export const loadMe = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const members = await import("@/lib/gateway/members");
+    await members.ensureAccounts();
+    const member = await members.getMember(context.userId);
+    if (!member) throw new Error("账号未开通，请联系超级管理员");
+    return member;
+  });
+
+export const loadMembers = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const members = await import("@/lib/gateway/members");
+    const me = await members.requireActive(context.userId);
+    members.assertCan(me, "users.manage");
+    return members.listMembers();
+  });
+
+export const createMember = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { email: string; name: string; password: string; role: AssignableRole }) => input)
+  .handler(async ({ context, data }) => {
+    const members = await import("@/lib/gateway/members");
+    const me = await members.requireActive(context.userId);
+    members.assertCan(me, "users.manage");
+    return members.createMember({
+      actorId: context.userId,
+      email: data.email,
+      name: data.name,
+      password: data.password,
+      role: data.role,
+    });
+  });
+
+export const updateMember = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { userId: string; name?: string; role?: AssignableRole; status?: "active" | "disabled" }) => input)
+  .handler(async ({ context, data }) => {
+    const members = await import("@/lib/gateway/members");
+    const me = await members.requireActive(context.userId);
+    members.assertCan(me, "users.manage");
+    return members.updateMember({
+      actorId: context.userId,
+      userId: data.userId,
+      name: data.name,
+      role: data.role,
+      status: data.status,
+    });
+  });
+
+export const setMemberPassword = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { userId: string; password: string }) => input)
+  .handler(async ({ context, data }) => {
+    const members = await import("@/lib/gateway/members");
+    const me = await members.requireActive(context.userId);
+    members.assertCan(me, "users.manage");
+    await members.setMemberPassword(data.userId, data.password);
+    return { ok: true };
+  });
+
 export const loadWorkspace = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
+    const members = await import("@/lib/gateway/members");
     const store = await import("@/lib/gateway/store");
-    const seeded = await store.seedWorkspace(context.userId);
+    const { member, workspaceId } = await members.actor(context.userId);
+    members.assertCan(member, "keys.read");
+    const seeded = await store.seedWorkspace(workspaceId);
     const [providers, models, keys, stats, logs] = await Promise.all([
-      store.listProviders(context.userId),
-      store.listModels(context.userId),
-      store.listKeys(context.userId),
-      store.usageStats(context.userId),
-      store.listLogs(context.userId, 40),
+      store.listProviders(workspaceId),
+      store.listModels(workspaceId),
+      store.listKeys(workspaceId),
+      store.usageStats(workspaceId),
+      store.listLogs(workspaceId, 40),
     ]);
-    return { providers, models, keys, stats, logs, starterKey: seeded.starterKey };
+    return {
+      providers,
+      models,
+      keys,
+      stats,
+      logs,
+      starterKey: member.role === "superadmin" ? seeded.starterKey : null,
+      me: member,
+    };
   });
 
 export const createApiKey = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: { name: string }) => ({ name: input.name.trim() }))
   .handler(async ({ context, data }) => {
+    const members = await import("@/lib/gateway/members");
+    const { member, workspaceId } = await members.actor(context.userId);
+    members.assertCan(member, "keys.write");
     const { createKey } = await import("@/lib/gateway/store");
-    return createKey(context.userId, data.name);
+    return createKey(workspaceId, data.name);
   });
 
 export const revokeApiKey = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: { id: string }) => ({ id: input.id }))
   .handler(async ({ context, data }) => {
+    const members = await import("@/lib/gateway/members");
+    const { member, workspaceId } = await members.actor(context.userId);
+    members.assertCan(member, "keys.write");
     const { revokeKey } = await import("@/lib/gateway/store");
-    await revokeKey(context.userId, data.id);
+    await revokeKey(workspaceId, data.id);
     return { ok: true };
   });
 
@@ -59,8 +139,11 @@ export const saveProvider = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: { id?: string; name: string; baseUrl: string; apiKey?: string; enabled?: boolean }) => input)
   .handler(async ({ context, data }) => {
+    const members = await import("@/lib/gateway/members");
+    const { member, workspaceId } = await members.actor(context.userId);
+    members.assertCan(member, "providers.write");
     const { upsertProvider } = await import("@/lib/gateway/store");
-    const id = await upsertProvider(context.userId, data);
+    const id = await upsertProvider(workspaceId, data);
     return { id };
   });
 
@@ -68,8 +151,11 @@ export const removeProvider = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: { id: string }) => input)
   .handler(async ({ context, data }) => {
+    const members = await import("@/lib/gateway/members");
+    const { member, workspaceId } = await members.actor(context.userId);
+    members.assertCan(member, "providers.write");
     const { deleteProvider } = await import("@/lib/gateway/store");
-    await deleteProvider(context.userId, data.id);
+    await deleteProvider(workspaceId, data.id);
     return { ok: true };
   });
 
@@ -77,8 +163,11 @@ export const saveModel = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: { id?: string; providerId: string; publicName: string; upstreamName: string }) => input)
   .handler(async ({ context, data }) => {
+    const members = await import("@/lib/gateway/members");
+    const { member, workspaceId } = await members.actor(context.userId);
+    members.assertCan(member, "providers.write");
     const { upsertModel } = await import("@/lib/gateway/store");
-    await upsertModel(context.userId, data);
+    await upsertModel(workspaceId, data);
     return { ok: true };
   });
 
@@ -86,8 +175,11 @@ export const removeModel = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: { id: string }) => input)
   .handler(async ({ context, data }) => {
+    const members = await import("@/lib/gateway/members");
+    const { member, workspaceId } = await members.actor(context.userId);
+    members.assertCan(member, "providers.write");
     const { deleteModel } = await import("@/lib/gateway/store");
-    await deleteModel(context.userId, data.id);
+    await deleteModel(workspaceId, data.id);
     return { ok: true };
   });
 
@@ -95,12 +187,15 @@ export const testProvider = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: { id?: string; baseUrl: string; apiKey?: string; model: string }) => input)
   .handler(async ({ context, data }) => {
+    const members = await import("@/lib/gateway/members");
+    const { member, workspaceId } = await members.actor(context.userId);
+    members.assertCan(member, "providers.write");
     const { getProviderSecret } = await import("@/lib/gateway/store");
     const { joinUrl } = await import("@/lib/gateway/http");
     let baseUrl = data.baseUrl.trim();
     let apiKey = data.apiKey?.trim() ?? "";
     if (data.id) {
-      const existing = await getProviderSecret(context.userId, data.id);
+      const existing = await getProviderSecret(workspaceId, data.id);
       if (!existing) throw new Error("上游不存在");
       baseUrl = data.baseUrl.trim() || existing.baseUrl;
       if (!apiKey) apiKey = existing.apiKey;
@@ -138,9 +233,12 @@ export const runPlayground = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: { model: string; messages: { role: string; content: string }[]; temperature?: number }) => input)
   .handler(async ({ context, data }) => {
+    const members = await import("@/lib/gateway/members");
+    const { member, workspaceId } = await members.actor(context.userId);
+    members.assertCan(member, "playground");
     const { resolveRoute, logUsage } = await import("@/lib/gateway/store");
     const { joinUrl } = await import("@/lib/gateway/http");
-    const route = await resolveRoute(context.userId, data.model);
+    const route = await resolveRoute(workspaceId, data.model);
     if (!route) throw new Error("还没有配置上游。请先在「上游」页添加提供商。");
     const url = joinUrl(route.baseUrl, "/chat/completions");
     const started = Date.now();
@@ -167,7 +265,7 @@ export const runPlayground = createServerFn({ method: "POST" })
       throw new Error(json.error?.message ?? `上游返回 ${res.status}`);
     }
     await logUsage({
-      userId: context.userId,
+      userId: workspaceId,
       apiKeyId: null,
       model: route.publicName,
       status: res.status,

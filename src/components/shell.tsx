@@ -1,26 +1,45 @@
-import { Link, useRouterState } from "@tanstack/react-router";
-import { BookOpen, KeyRound, Menu, Play, Server, Activity } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Activity, BookOpen, KeyRound, Menu, Play, Server, Users } from "lucide-react";
+import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { RedirectToSignIn, UserButton } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { HelixMark } from "@/components/mark";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { can, firstAllowedPath, pathPermission, ROLE_LABEL, type Role } from "@/lib/gateway/roles";
+import { loadMe } from "@/lib/server/gateway";
 import { cn } from "@/lib/utils";
 
+type Me = {
+  userId: string;
+  email: string;
+  name: string;
+  role: Role;
+  status: "active" | "disabled";
+  createdAt: string;
+};
+
+const MeContext = createContext<Me | null>(null);
+export function useMe(): Me | null {
+  return useContext(MeContext);
+}
+
 const NAV = [
-  { to: "/", label: "控制台", icon: KeyRound },
-  { to: "/providers", label: "上游", icon: Server },
-  { to: "/playground", label: "试运行", icon: Play },
-  { to: "/logs", label: "用量", icon: Activity },
-  { to: "/docs", label: "调用说明", icon: BookOpen },
+  { to: "/", label: "控制台", icon: KeyRound, perm: "keys.read" as const },
+  { to: "/providers", label: "上游", icon: Server, perm: "providers.read" as const },
+  { to: "/playground", label: "试运行", icon: Play, perm: "playground" as const },
+  { to: "/logs", label: "用量", icon: Activity, perm: "logs.read" as const },
+  { to: "/docs", label: "调用说明", icon: BookOpen, perm: "docs.read" as const },
+  { to: "/users", label: "账号", icon: Users, perm: "users.manage" as const },
 ] as const;
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+function NavLinks({ role, onNavigate }: { role: Role; onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   return (
     <nav className="flex flex-col gap-1">
-      {NAV.map((item) => {
+      {NAV.filter((item) => can(role, item.perm)).map((item) => {
         const active = item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
         const Icon = item.icon;
         return (
@@ -54,40 +73,45 @@ function Brand() {
   );
 }
 
-export function Shell({ children }: { children: ReactNode }) {
+export function Shell({ children, me }: { children: ReactNode; me: Me }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="min-h-screen bg-bg text-fg">
-      <aside className="fixed inset-y-0 left-0 hidden w-60 border-r border-border bg-bg p-5 md:flex md:flex-col">
-        <Brand />
-        <div className="mt-8 flex-1">
-          <NavLinks />
-        </div>
-        <p className="text-[11px] leading-5 text-faint">HTTP 接口，IP 与域名同时可用。</p>
-      </aside>
-
-      <div className="md:pl-60">
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-bg/85 px-4 backdrop-blur-sm md:h-16 md:px-8">
-          <div className="flex items-center gap-2 md:hidden">
-            <Sheet open={open} onOpenChange={setOpen}>
-              <Button variant="ghost" size="icon" aria-label="打开菜单" onClick={() => setOpen(true)}>
-                <Menu className="size-5" />
-              </Button>
-              <SheetContent>
-                <Brand />
-                <div className="mt-8">
-                  <NavLinks onNavigate={() => setOpen(false)} />
-                </div>
-              </SheetContent>
-            </Sheet>
-            <Brand />
+    <MeContext.Provider value={me}>
+      <div className="min-h-screen bg-bg text-fg">
+        <aside className="fixed inset-y-0 left-0 hidden w-60 border-r border-border bg-bg p-5 md:flex md:flex-col">
+          <Brand />
+          <div className="mt-8 flex-1">
+            <NavLinks role={me.role} />
           </div>
-          <div className="hidden text-sm text-muted md:block">OpenAI 兼容网关</div>
-          <UserButton />
-        </header>
-        <main className="px-4 py-6 md:px-8 md:py-8">{children}</main>
+          <p className="text-[11px] leading-5 text-faint">HTTP 接口，IP 与域名同时可用。</p>
+        </aside>
+
+        <div className="md:pl-60">
+          <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-bg/85 px-4 backdrop-blur-sm md:h-16 md:px-8">
+            <div className="flex items-center gap-2 md:hidden">
+              <Sheet open={open} onOpenChange={setOpen}>
+                <Button variant="ghost" size="icon" aria-label="打开菜单" onClick={() => setOpen(true)}>
+                  <Menu className="size-5" />
+                </Button>
+                <SheetContent>
+                  <Brand />
+                  <div className="mt-8">
+                    <NavLinks role={me.role} onNavigate={() => setOpen(false)} />
+                  </div>
+                </SheetContent>
+              </Sheet>
+              <Brand />
+            </div>
+            <div className="hidden items-center gap-2 text-sm text-muted md:flex">
+              OpenAI 兼容网关
+              <Badge tone="steel">{ROLE_LABEL[me.role]}</Badge>
+            </div>
+            <UserButton />
+          </header>
+          <main className="px-4 py-6 md:px-8 md:py-8">{children}</main>
+        </div>
       </div>
-    </div>
+    </MeContext.Provider>
   );
 }
 
@@ -102,8 +126,25 @@ export function LoadingSplash({ message = "正在核对登录状态…" }: { mes
 }
 
 export function AppGuard({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { user, isPending } = useCurrentUserState();
-  if (isPending) return <LoadingSplash />;
+  const me = useQuery({
+    queryKey: ["me"],
+    queryFn: () => loadMe(),
+    enabled: Boolean(user),
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!me.data || me.data.status !== "active") return;
+    const needed = pathPermission(pathname);
+    if (needed && !can(me.data.role, needed)) {
+      void navigate({ to: firstAllowedPath(me.data.role) });
+    }
+  }, [me.data, pathname, navigate]);
+
+  if (isPending || (user && me.isPending)) return <LoadingSplash />;
   if (!user) {
     return (
       <>
@@ -112,7 +153,14 @@ export function AppGuard({ children }: { children: ReactNode }) {
       </>
     );
   }
-  return <Shell>{children}</Shell>;
+  if (me.error) {
+    return <LoadingSplash message={me.error instanceof Error ? me.error.message : "账号未开通"} />;
+  }
+  if (!me.data) return <LoadingSplash />;
+  if (me.data.status !== "active") {
+    return <LoadingSplash message="账号已停用，请联系超级管理员。" />;
+  }
+  return <Shell me={me.data}>{children}</Shell>;
 }
 
 export function PageHeader({

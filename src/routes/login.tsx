@@ -6,9 +6,9 @@ import { LoadingSplash } from "@/components/shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { GROK_PROVIDERS, authClient, authEnabled, signIn } from "@/lib/auth/client";
+import { authClient } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { migrateAdminEmail, requestPasswordReset } from "@/lib/server/gateway";
+import { ensureAccounts, requestPasswordReset } from "@/lib/server/gateway";
 
 export const Route = createFileRoute("/login")({ component: Login });
 
@@ -18,40 +18,25 @@ function Login() {
   const [panel, setPanel] = useState<"signin" | "forgot" | "sent">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState<"in" | "up" | "reset" | null>(null);
+  const [busy, setBusy] = useState<"in" | "reset" | null>(null);
 
   useEffect(() => {
-    void migrateAdminEmail().catch(() => undefined);
+    void ensureAccounts().catch(() => undefined);
   }, []);
 
   useEffect(() => {
     if (!isPending && user) void navigate({ to: "/" });
   }, [isPending, user, navigate]);
 
-  async function handleEmail(mode: "in" | "up") {
-    setBusy(mode);
+  async function handleSignIn() {
+    setBusy("in");
     try {
-      if (mode === "up") {
-        const { error } = await authClient.signUp.email({
-          email,
-          password,
-          name: email.split("@")[0] || "Helix",
-          callbackURL: "/",
-        });
-        if (error) throw new Error(error.message);
-      } else {
-        const { error } = await authClient.signIn.email({ email, password, callbackURL: "/" });
-        if (error) throw new Error(error.message);
-      }
-      toast.success(mode === "up" ? "账号已创建" : "已登录");
+      const { error } = await authClient.signIn.email({ email, password, callbackURL: "/" });
+      if (error) throw new Error(error.message);
+      toast.success("已登录");
       await navigate({ to: "/" });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "登录失败";
-      if (/already exists|duplicate|registered/i.test(message)) {
-        toast.error("该邮箱已注册，请登录或找回密码");
-      } else {
-        toast.error(message);
-      }
+      toast.error(err instanceof Error ? err.message : "登录失败");
     } finally {
       setBusy(null);
     }
@@ -62,7 +47,7 @@ function Login() {
     try {
       await requestPasswordReset({ data: { email } });
       setPanel("sent");
-      toast.success("如果该邮箱已注册，重置邮件已发出");
+      toast.success("如果该邮箱已开通，重置邮件已发出");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "发送失败");
     } finally {
@@ -86,7 +71,7 @@ function Login() {
             调用所有大模型。
           </h1>
           <p className="mt-6 max-w-md text-sm leading-7 text-muted">
-            OpenAI 兼容接口，协议 HTTP。用服务器 IP 或域名都可以。把 Qwen、DeepSeek 或其他上游收进 Helix，应用只记一个 Base URL 和一把密钥。
+            OpenAI 兼容接口，协议 HTTP。用服务器 IP 或域名都可以。账号由超级管理员开通，不能自行注册。
           </p>
         </section>
 
@@ -102,13 +87,13 @@ function Login() {
           {panel === "signin" ? (
             <>
               <h2 className="font-display text-2xl tracking-tight">登录控制台</h2>
-              <p className="mt-1 text-sm text-muted">使用邮箱和密码，或社交账号进入。</p>
+              <p className="mt-1 text-sm text-muted">使用已开通的邮箱和密码进入。</p>
 
               <form
                 className="mt-6 space-y-4"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  void handleEmail("in");
+                  void handleSignIn();
                 }}
               >
                 <div className="space-y-1.5">
@@ -147,15 +132,6 @@ function Login() {
                 <Button type="submit" className="w-full" disabled={busy !== null}>
                   {busy === "in" ? "登录中…" : "登录"}
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  disabled={busy !== null}
-                  onClick={() => void handleEmail("up")}
-                >
-                  {busy === "up" ? "创建中…" : "创建账号"}
-                </Button>
               </form>
             </>
           ) : null}
@@ -163,7 +139,7 @@ function Login() {
           {panel === "forgot" ? (
             <>
               <h2 className="font-display text-2xl tracking-tight">找回密码</h2>
-              <p className="mt-1 text-sm text-muted">输入注册邮箱，我们会把重置链接发到该邮箱。</p>
+              <p className="mt-1 text-sm text-muted">输入开通邮箱，重置链接会从超级管理员邮箱发出。</p>
               <form
                 className="mt-6 space-y-4"
                 onSubmit={(e) => {
@@ -197,34 +173,11 @@ function Login() {
             <>
               <h2 className="font-display text-2xl tracking-tight">请查收邮箱</h2>
               <p className="mt-3 text-sm leading-6 text-muted">
-                请打开该邮箱的收件箱（含垃圾邮件）。第一次使用时，可能先收到一封确认信，点开确认后再点一次「发送重置邮件」。链接一小时内有效。
+                如果该邮箱已开通，重置链接已发出。请打开收件箱（含垃圾邮件），一小时内有效。
               </p>
               <Button type="button" className="mt-6 w-full" onClick={() => setPanel("signin")}>
                 返回登录
               </Button>
-            </>
-          ) : null}
-
-          {authEnabled && panel === "signin" ? (
-            <>
-              <div className="my-6 flex items-center gap-3 text-xs text-faint">
-                <span className="h-px flex-1 bg-border" />
-                或
-                <span className="h-px flex-1 bg-border" />
-              </div>
-              <div className="space-y-2">
-                {GROK_PROVIDERS.map((p) => (
-                  <Button
-                    key={p.providerId}
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => void signIn(p.providerId, { callbackURL: "/" })}
-                  >
-                    使用 {p.label} 继续
-                  </Button>
-                ))}
-              </div>
             </>
           ) : null}
         </section>

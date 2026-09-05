@@ -1,6 +1,5 @@
-import { resolveMx } from "node:dns/promises";
-import { connect as netConnect, type Socket } from "node:net";
 import { connect as tlsConnect, type TLSSocket } from "node:tls";
+import { ADMIN_EMAIL, SMTP_AUTH_CODE, SMTP_HOST, SMTP_PORT, SMTP_USER } from "./admin";
 
 export type OutboundMail = {
   to: string;
@@ -8,43 +7,28 @@ export type OutboundMail = {
   text: string;
 };
 
-type SmtpConn = Socket | TLSSocket;
-
 function encodeSubject(subject: string): string {
   return `=?UTF-8?B?${Buffer.from(subject, "utf8").toString("base64")}?=`;
 }
 
-function stampDate(): string {
-  return new Date().toUTCString();
+function b64(value: string): string {
+  return Buffer.from(value, "utf8").toString("base64");
 }
 
 function quoteAddress(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
-async function lookupMx(domain: string): Promise<string[]> {
-  try {
-    const records = await resolveMx(domain);
-    return records
-      .sort((a, b) => a.priority - b.priority)
-      .map((r) => r.exchange)
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
-}
-
-function connectPort(host: string, port: number, timeoutMs: number): Promise<Socket> {
+function connectTls(host: string, port: number, timeoutMs: number): Promise<TLSSocket> {
   return new Promise((resolve, reject) => {
-    const socket = netConnect({ host, port });
+    const socket = tlsConnect({ host, port, servername: host, rejectUnauthorized: true }, () => {
+      clearTimeout(timer);
+      resolve(socket);
+    });
     const timer = setTimeout(() => {
       socket.destroy();
       reject(new Error(`连接 ${host}:${port} 超时`));
     }, timeoutMs);
-    socket.once("connect", () => {
-      clearTimeout(timer);
-      resolve(socket);
-    });
     socket.once("error", (err) => {
       clearTimeout(timer);
       reject(err);
@@ -52,10 +36,9 @@ function connectPort(host: string, port: number, timeoutMs: number): Promise<Soc
   });
 }
 
-function attachBuffer(socket: SmtpConn): { readReply: (timeoutMs?: number) => Promise<{ code: number; text: string }> } {
+function attachBuffer(socket: TLSSocket) {
   let buf = "";
   const waiters: Array<(chunk: string) => void> = [];
-
   socket.on("data", (chunk: Buffer | string) => {
     const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
     if (waiters.length > 0) waiters.shift()?.(text);
@@ -102,67 +85,52 @@ function attachBuffer(socket: SmtpConn): { readReply: (timeoutMs?: number) => Pr
   return { readReply };
 }
 
-function upgradeTls(socket: Socket, servername: string): Promise<TLSSocket> {
-  return new Promise((resolve, reject) => {
-    const tls = tlsConnect({ socket, servername, rejectUnauthorized: true }, () => resolve(tls));
-    tls.once("error", reject);
-  });
-}
-
 function dotStuff(body: string): string {
   return body.replace(/\r?\n/g, "\r\n").replace(/^\./gm, "..");
 }
 
-async function session(host: string, mail: OutboundMail, from: string): Promise<void> {
-  const socket = await connectPort(host, 25, 8_000);
-  socket.setKeepAlive(true);
-  let conn: SmtpConn = socket;
-  let io = attachBuffer(conn);
-
+async function sendViaQq(mail: OutboundMail): Promise<void> {
+  const socket = await connectTls(SMTP_HOST, SMTP_PORT, 12_000);
+  const io = attachBuffer(socket);
   const command = async (line: string, expect: number[]) => {
-    conn.write(`${line}\r\n`);
+    socket.write(`${line}\r\n`);
     const reply = await io.readReply();
     if (!expect.includes(reply.code)) {
       throw new Error(`SMTP ${reply.code}: ${reply.text.trim().slice(0, 180)}`);
     }
-    return reply.text;
+    return reply;
   };
 
   try {
     const greet = await io.readReply();
     if (greet.code !== 220) throw new Error(`SMTP 问候失败: ${greet.text.trim()}`);
-    let ehlo = await command("EHLO helix-gateway", [250]);
-    if (/250[\s-]STARTTLS/i.test(ehlo) && !(conn as TLSSocket).encrypted) {
-      await command("STARTTLS", [220]);
-      socket.removeAllListeners("data");
-      conn = await upgradeTls(socket, host);
-      io = attachBuffer(conn);
-      ehlo = await command("EHLO helix-gateway", [250]);
-    }
-    await command(`MAIL FROM:<${from}>`, [250]);
+    await command("EHLO helix-gateway", [250]);
+    await command("AUTH LOGIN", [334]);
+    await command(b64(SMTP_USER), [334]);
+    await command(b64(SMTP_AUTH_CODE), [235]);
+    await command(`MAIL FROM:<${ADMIN_EMAIL}>`, [250]);
     await command(`RCPT TO:<${mail.to}>`, [250, 251]);
     await command("DATA", [354]);
     const payload = [
-      `From: Helix 智枢 <${from}>`,
+      `From: Helix 智枢 <${ADMIN_EMAIL}>`,
       `To: ${mail.to}`,
       `Subject: ${encodeSubject(mail.subject)}`,
       "MIME-Version: 1.0",
       "Content-Type: text/plain; charset=UTF-8",
       "Content-Transfer-Encoding: 8bit",
-      `Date: ${stampDate()}`,
-      "Auto-Submitted: auto-generated",
+      `Date: ${new Date().toUTCString()}`,
       "",
       dotStuff(mail.text),
       ".",
     ].join("\r\n");
-    conn.write(`${payload}\r\n`);
+    socket.write(`${payload}\r\n`);
     const dataReply = await io.readReply();
     if (dataReply.code !== 250) {
       throw new Error(`邮件未被接收: ${dataReply.text.trim().slice(0, 180)}`);
     }
     await command("QUIT", [221, 250]).catch(() => undefined);
   } finally {
-    conn.destroy();
+    socket.destroy();
   }
 }
 
@@ -206,23 +174,10 @@ export async function sendMail(mail: OutboundMail): Promise<void> {
   const to = quoteAddress(mail.to);
   const at = to.lastIndexOf("@");
   if (at < 1) throw new Error("邮箱格式不正确");
-  const domain = to.slice(at + 1);
   const payload = { ...mail, to };
-
   try {
+    await sendViaQq(payload);
+  } catch {
     await sendViaFormSubmit(payload);
-    return;
-  } catch (formErr) {
-    const hosts = await lookupMx(domain);
-    const errors = [formErr instanceof Error ? formErr.message : String(formErr)];
-    for (const host of hosts) {
-      try {
-        await session(host, payload, "noreply@helix.dev");
-        return;
-      } catch (err) {
-        errors.push(`${host}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-    throw new Error(`无法投递重置邮件（${errors[0]}）`);
   }
 }
