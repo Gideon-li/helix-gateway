@@ -99,6 +99,12 @@ async function writePassword(userId: string, password: string): Promise<void> {
   `;
 }
 
+async function getOrCreateUser(email: string, name: string, password: string): Promise<string> {
+  const existing = await findUserIdByEmail(email);
+  if (existing) return existing;
+  return insertUser(email, name, password);
+}
+
 async function insertUser(email: string, name: string, password: string): Promise<string> {
   const sql = await getSql();
   const existing = await findUserIdByEmail(email);
@@ -137,7 +143,7 @@ export async function ensureAccounts(): Promise<{ ok: true }> {
     }
   }
 
-  const superId = await insertUser(ADMIN_EMAIL, ADMIN_NAME, ADMIN_PASSWORD);
+  const superId = await getOrCreateUser(ADMIN_EMAIL, ADMIN_NAME, ADMIN_PASSWORD);
   await upsertMember({
     userId: superId,
     email: ADMIN_EMAIL,
@@ -146,7 +152,7 @@ export async function ensureAccounts(): Promise<{ ok: true }> {
   });
 
   for (const staff of STAFF_SEED) {
-    const id = await insertUser(staff.email, staff.name, staff.password);
+    const id = await getOrCreateUser(staff.email, staff.name, staff.password);
     await upsertMember({
       userId: id,
       email: staff.email,
