@@ -25,7 +25,7 @@ export function openaiError(status: number, message: string, code: string, type 
 }
 
 export function readBearer(request: Request): string | null {
-  const header = request.headers.get("authorization") ?? "";
+  const header = request.headers.get("authorization") ?? request.headers.get("Authorization") ?? "";
   const match = header.match(/^Bearer\s+(\S+)/i);
   return match?.[1] ?? null;
 }

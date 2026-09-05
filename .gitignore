@@ -1,6 +1,9 @@
 node_modules/
 .vercel/
+.tanstack/
+.grok/
 .env
 .env.*
 *.log
 screenshots/
+artifacts/
