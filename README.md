@@ -6,7 +6,7 @@
 
 ## 控制台账号
 
-见仓库内 `CREDENTIALS.md`（请把仓库保持 **private**）。登录页不开放注册，也不使用 Google / X。账号由超级管理员 `524347725@qq.com` 在「账号」页开通；忘记密码时重置邮件从该 QQ 邮箱发出。
+见仓库内 `CREDENTIALS.md`（请把仓库保持 **private**）。登录页不开放注册，也不使用 Google / X。账号由超级管理员 `524347725@qq.com` 或管理员 `divination558@foxmail.com` 在「账号」页开通；忘记密码时重置邮件从该 QQ 邮箱发出。
 
 登录后可以：
 

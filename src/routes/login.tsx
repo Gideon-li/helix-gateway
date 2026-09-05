@@ -19,9 +19,12 @@ function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState<"in" | "reset" | null>(null);
+  const [seeded, setSeeded] = useState(false);
 
   useEffect(() => {
-    void ensureAccounts().catch(() => undefined);
+    void ensureAccounts()
+      .catch(() => undefined)
+      .finally(() => setSeeded(true));
   }, []);
 
   useEffect(() => {
@@ -31,6 +34,7 @@ function Login() {
   async function handleSignIn() {
     setBusy("in");
     try {
+      await ensureAccounts().catch(() => undefined);
       const { error } = await authClient.signIn.email({ email, password, callbackURL: "/" });
       if (error) throw new Error(error.message);
       toast.success("已登录");
@@ -55,7 +59,7 @@ function Login() {
     }
   }
 
-  if (isPending) return <LoadingSplash />;
+  if (isPending || !seeded) return <LoadingSplash />;
   if (user) return <LoadingSplash message="已登录，正在进入控制台…" />;
 
   return (
@@ -71,7 +75,7 @@ function Login() {
             调用所有大模型。
           </h1>
           <p className="mt-6 max-w-md text-sm leading-7 text-muted">
-            OpenAI 兼容接口，协议 HTTP。用服务器 IP 或域名都可以。账号由超级管理员开通，不能自行注册。
+            OpenAI 兼容接口，协议 HTTP。用服务器 IP 或域名都可以。账号由超级管理员开通，不能自行注册，也不能用 Google / X 登录。
           </p>
         </section>
 

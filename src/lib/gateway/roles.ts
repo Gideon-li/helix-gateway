@@ -10,7 +10,7 @@ export const ROLE_LABEL: Record<Role, string> = {
 
 export const ROLE_HINT: Record<Role, string> = {
   superadmin: "全部权限，含账号与密码管理",
-  admin: "密钥、上游、试运行、用量",
+  admin: "账号、密钥、上游、试运行、用量",
   operator: "密钥、试运行、用量、调用说明",
   viewer: "用量与调用说明，不能改配置",
 };
@@ -39,7 +39,16 @@ const MATRIX: Record<Role, Permission[]> = {
     "logs.read",
     "docs.read",
   ],
-  admin: ["providers.write", "providers.read", "keys.write", "keys.read", "playground", "logs.read", "docs.read"],
+  admin: [
+    "users.manage",
+    "providers.write",
+    "providers.read",
+    "keys.write",
+    "keys.read",
+    "playground",
+    "logs.read",
+    "docs.read",
+  ],
   operator: ["keys.write", "keys.read", "playground", "logs.read", "docs.read"],
   viewer: ["logs.read", "docs.read"],
 };

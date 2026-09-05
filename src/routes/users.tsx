@@ -82,7 +82,7 @@ function UsersPage() {
     <div>
       <PageHeader
         title="账号"
-        description="只有超级管理员可以开通账号、改权限、重置密码。其他人不能自行注册。"
+        description="只有超级管理员和管理员可以开通账号、改权限、重置密码。其他人不能自行注册。"
         action={
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="size-4" />

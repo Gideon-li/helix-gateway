@@ -1,7 +1,6 @@
-import { randomBytes } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
 import { getSql } from "@/lib/db";
-import { ADMIN_EMAIL, ADMIN_NAME, LEGACY_ADMIN_EMAILS, STAFF_SEED } from "./admin";
+import { ADMIN_EMAIL, ADMIN_NAME, ADMIN_PASSWORD, LEGACY_ADMIN_EMAILS, STAFF_SEED } from "./admin";
 import { newId } from "./crypto";
 import { can, isRole, type AssignableRole, type Permission, type Role } from "./roles";
 
@@ -138,10 +137,7 @@ export async function ensureAccounts(): Promise<{ ok: true }> {
     }
   }
 
-  let superId = await findUserIdByEmail(ADMIN_EMAIL);
-  if (!superId) {
-    superId = await insertUser(ADMIN_EMAIL, ADMIN_NAME, randomBytes(18).toString("base64url"));
-  }
+  const superId = await insertUser(ADMIN_EMAIL, ADMIN_NAME, ADMIN_PASSWORD);
   await upsertMember({
     userId: superId,
     email: ADMIN_EMAIL,
@@ -285,6 +281,10 @@ export async function updateMember(input: {
 }): Promise<Member> {
   const current = await getMember(input.userId);
   if (!current) throw new Error("账号不存在");
+  if (current.userId === input.actorId) {
+    if (input.role && input.role !== current.role) throw new Error("不能修改自己的角色");
+    if (input.status === "disabled") throw new Error("不能停用自己的账号");
+  }
   if (current.role === "superadmin") {
     if (input.role) throw new Error("不能修改超级管理员的角色");
     if (input.status === "disabled") throw new Error("不能停用超级管理员");
