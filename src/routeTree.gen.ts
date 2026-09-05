@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApproveResetRouteImport } from './routes/approve-reset'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LogsRouteImport } from './routes/logs'
@@ -24,6 +25,11 @@ import { Route as V1ChatCompletionsRouteImport } from './routes/v1/chat/completi
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApproveResetRoute = ApproveResetRouteImport.update({
+  id: '/approve-reset',
+  path: '/approve-reset',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DocsRoute = DocsRouteImport.update({
@@ -79,6 +85,7 @@ const V1ChatCompletionsRoute = V1ChatCompletionsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/approve-reset': typeof ApproveResetRoute
   '/docs': typeof DocsRoute
   '/login': typeof LoginRoute
   '/logs': typeof LogsRoute
@@ -92,6 +99,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/approve-reset': typeof ApproveResetRoute
   '/docs': typeof DocsRoute
   '/login': typeof LoginRoute
   '/logs': typeof LogsRoute
@@ -106,6 +114,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/approve-reset': typeof ApproveResetRoute
   '/docs': typeof DocsRoute
   '/login': typeof LoginRoute
   '/logs': typeof LogsRoute
@@ -121,6 +130,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/approve-reset'
     | '/docs'
     | '/login'
     | '/logs'
@@ -134,6 +144,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/approve-reset'
     | '/docs'
     | '/login'
     | '/logs'
@@ -147,6 +158,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/approve-reset'
     | '/docs'
     | '/login'
     | '/logs'
@@ -161,6 +173,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApproveResetRoute: typeof ApproveResetRoute
   DocsRoute: typeof DocsRoute
   LoginRoute: typeof LoginRoute
   LogsRoute: typeof LogsRoute
@@ -180,6 +193,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/approve-reset': {
+      id: '/approve-reset'
+      path: '/approve-reset'
+      fullPath: '/approve-reset'
+      preLoaderRoute: typeof ApproveResetRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/docs': {
@@ -257,6 +277,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApproveResetRoute: ApproveResetRoute,
   DocsRoute: DocsRoute,
   LoginRoute: LoginRoute,
   LogsRoute: LogsRoute,

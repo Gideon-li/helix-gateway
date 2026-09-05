@@ -86,6 +86,46 @@ export const setMemberPassword = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const loadResetRequests = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const members = await import("@/lib/gateway/members");
+    const reset = await import("@/lib/gateway/password-reset");
+    const me = await members.requireActive(context.userId);
+    members.assertCan(me, "users.manage");
+    await Promise.race([
+      reset.processInboundMail().catch(() => undefined),
+      new Promise((resolve) => setTimeout(resolve, 4000)),
+    ]);
+    return reset.listResetRequests();
+  });
+
+export const decideResetRequest = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { id: string; action: "approve" | "reject" }) => input)
+  .handler(async ({ context, data }) => {
+    const members = await import("@/lib/gateway/members");
+    const reset = await import("@/lib/gateway/password-reset");
+    const me = await members.requireActive(context.userId);
+    members.assertCan(me, "users.manage");
+    return reset.decideResetRequest({
+      actorId: context.userId,
+      requestId: data.id,
+      action: data.action,
+    });
+  });
+
+export const approveResetByMailToken = createServerFn({ method: "POST" })
+  .validator((input: { token: string }) => ({ token: String(input.token ?? "").trim() }))
+  .handler(async ({ data }) => {
+    const reset = await import("@/lib/gateway/password-reset");
+    await Promise.race([
+      reset.processInboundMail().catch(() => undefined),
+      new Promise((resolve) => setTimeout(resolve, 4000)),
+    ]);
+    return reset.approveByMailToken(data.token);
+  });
+
 export const loadWorkspace = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {

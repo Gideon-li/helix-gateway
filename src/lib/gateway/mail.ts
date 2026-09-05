@@ -5,6 +5,8 @@ export type OutboundMail = {
   to: string;
   subject: string;
   text: string;
+  replyTo?: string;
+  messageId?: string;
 };
 
 function encodeSubject(subject: string): string {
@@ -65,7 +67,7 @@ function attachBuffer(socket: TLSSocket) {
     });
   }
 
-  async function readReply(timeoutMs = 15_000): Promise<{ code: number; text: string }> {
+  async function readReply(timeoutMs = 6_000): Promise<{ code: number; text: string }> {
     let text = "";
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -90,7 +92,7 @@ function dotStuff(body: string): string {
 }
 
 async function sendViaQq(mail: OutboundMail): Promise<void> {
-  const socket = await connectTls(SMTP_HOST, SMTP_PORT, 12_000);
+  const socket = await connectTls(SMTP_HOST, SMTP_PORT, 4_000);
   const io = attachBuffer(socket);
   const command = async (line: string, expect: number[]) => {
     socket.write(`${line}\r\n`);
@@ -111,18 +113,18 @@ async function sendViaQq(mail: OutboundMail): Promise<void> {
     await command(`MAIL FROM:<${ADMIN_EMAIL}>`, [250]);
     await command(`RCPT TO:<${mail.to}>`, [250, 251]);
     await command("DATA", [354]);
-    const payload = [
+    const headers = [
       `From: Helix 智枢 <${ADMIN_EMAIL}>`,
       `To: ${mail.to}`,
+      mail.replyTo ? `Reply-To: ${mail.replyTo}` : "",
+      mail.messageId ? `Message-ID: <${mail.messageId}>` : "",
       `Subject: ${encodeSubject(mail.subject)}`,
       "MIME-Version: 1.0",
       "Content-Type: text/plain; charset=UTF-8",
       "Content-Transfer-Encoding: 8bit",
       `Date: ${new Date().toUTCString()}`,
-      "",
-      dotStuff(mail.text),
-      ".",
-    ].join("\r\n");
+    ].filter(Boolean);
+    const payload = [...headers, "", dotStuff(mail.text), "."].join("\r\n");
     socket.write(`${payload}\r\n`);
     const dataReply = await io.readReply();
     if (dataReply.code !== 250) {
@@ -136,7 +138,7 @@ async function sendViaQq(mail: OutboundMail): Promise<void> {
 
 async function sendViaFormSubmit(mail: OutboundMail): Promise<void> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 18_000);
+  const timer = setTimeout(() => controller.abort(), 8_000);
   try {
     const res = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(mail.to)}`, {
       method: "POST",
@@ -179,5 +181,20 @@ export async function sendMail(mail: OutboundMail): Promise<void> {
     await sendViaQq(payload);
   } catch {
     await sendViaFormSubmit(payload);
+  }
+}
+
+export async function sendMailToEach(addresses: string[], mail: Omit<OutboundMail, "to">): Promise<void> {
+  const unique = [...new Set(addresses.map(quoteAddress).filter((row) => row.includes("@")))];
+  const errors: string[] = [];
+  for (const to of unique) {
+    try {
+      await sendMail({ ...mail, to });
+    } catch (err) {
+      errors.push(`${to}: ${err instanceof Error ? err.message : "发送失败"}`);
+    }
+  }
+  if (unique.length > 0 && errors.length === unique.length) {
+    throw new Error(errors[0] || "邮件发送失败");
   }
 }

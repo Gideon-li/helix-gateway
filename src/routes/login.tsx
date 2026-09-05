@@ -20,6 +20,7 @@ function Login() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState<"in" | "reset" | null>(null);
   const [seeded, setSeeded] = useState(false);
+  const [sentMode, setSentMode] = useState<"admin-reply" | "awaiting-admin" | "reset-sent">("awaiting-admin");
 
   useEffect(() => {
     void ensureAccounts()
@@ -49,9 +50,10 @@ function Login() {
   async function handleForgot() {
     setBusy("reset");
     try {
-      await requestPasswordReset({ data: { email } });
+      const result = await requestPasswordReset({ data: { email } });
+      setSentMode(result.mode);
       setPanel("sent");
-      toast.success("如果该邮箱已开通，重置邮件已发出");
+      toast.success("申请已提交");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "发送失败");
     } finally {
@@ -143,7 +145,9 @@ function Login() {
           {panel === "forgot" ? (
             <>
               <h2 className="font-display text-2xl tracking-tight">找回密码</h2>
-              <p className="mt-1 text-sm text-muted">输入开通邮箱，重置链接会从超级管理员邮箱发出。</p>
+              <p className="mt-1 text-sm text-muted">
+                管理员回复邮件「密码」即可重置。普通账号会先通知两位管理员，批准后才能重置。
+              </p>
               <form
                 className="mt-6 space-y-4"
                 onSubmit={(e) => {
@@ -175,9 +179,15 @@ function Login() {
 
           {panel === "sent" ? (
             <>
-              <h2 className="font-display text-2xl tracking-tight">请查收邮箱</h2>
+              <h2 className="font-display text-2xl tracking-tight">
+                {sentMode === "awaiting-admin" ? "已通知管理员" : "请查收邮箱"}
+              </h2>
               <p className="mt-3 text-sm leading-6 text-muted">
-                如果该邮箱已开通，重置链接已发出。请打开收件箱（含垃圾邮件），一小时内有效。
+                {sentMode === "admin-reply"
+                  ? "请打开收件箱（含垃圾邮件），回复这封信，正文只写：密码。确认后你会收到设置新密码的链接。"
+                  : sentMode === "reset-sent"
+                    ? "管理员已允许重置。设置新密码的链接已发出，一小时内有效。"
+                    : "已向两位管理员发送申请。他们允许后，你会收到设置新密码的邮件。"}
               </p>
               <Button type="button" className="mt-6 w-full" onClick={() => setPanel("signin")}>
                 返回登录

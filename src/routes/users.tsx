@@ -17,7 +17,14 @@ import {
   type AssignableRole,
   type Role,
 } from "@/lib/gateway/roles";
-import { createMember, loadMembers, setMemberPassword, updateMember } from "@/lib/server/gateway";
+import {
+  createMember,
+  decideResetRequest,
+  loadMembers,
+  loadResetRequests,
+  setMemberPassword,
+  updateMember,
+} from "@/lib/server/gateway";
 
 export const Route = createFileRoute("/users")({ component: Page });
 
@@ -32,6 +39,11 @@ function Page() {
 function UsersPage() {
   const qc = useQueryClient();
   const members = useQuery({ queryKey: ["members"], queryFn: () => loadMembers() });
+  const requests = useQuery({
+    queryKey: ["reset-requests"],
+    queryFn: () => loadResetRequests(),
+    refetchInterval: 10_000,
+  });
   const [createOpen, setCreateOpen] = useState(false);
   const [passwordFor, setPasswordFor] = useState<{ userId: string; email: string } | null>(null);
 
@@ -78,11 +90,24 @@ function UsersPage() {
     onError: (e) => toast.error(e.message),
   });
 
+  const decideMut = useMutation({
+    mutationFn: (input: { id: string; action: "approve" | "reject" }) => decideResetRequest({ data: input }),
+    onSuccess: (_data, vars) => {
+      toast.success(vars.action === "approve" ? "已允许，重置邮件已发给对方" : "已拒绝该申请");
+      void qc.invalidateQueries({ queryKey: ["reset-requests"] });
+      void qc.invalidateQueries({ queryKey: ["members"] });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const pending = (requests.data ?? []).filter((row) => row.status === "pending");
+  const pendingIds = new Set(pending.map((row) => row.userId));
+
   return (
     <div>
       <PageHeader
         title="账号"
-        description="只有超级管理员和管理员可以开通账号、改权限、重置密码。其他人不能自行注册。"
+        description="开通账号、改权限、设置密码。普通用户找回密码需管理员批准；两位管理员回复邮件「密码」即可自行重置。"
         action={
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="size-4" />
@@ -90,6 +115,46 @@ function UsersPage() {
           </Button>
         }
       />
+
+      {pending.length > 0 ? (
+        <Card className="mb-6 overflow-hidden p-0">
+          <div className="border-b border-border px-5 py-3">
+            <h2 className="text-sm font-medium">待处理的密码重置</h2>
+            <p className="mt-1 text-xs text-muted">允许后，对方会收到设置新密码的邮件。也可以回复申请邮件，正文写「密码」。</p>
+          </div>
+          <div className="divide-y divide-border">
+            {pending.map((row) => (
+              <div key={row.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{row.name || row.email}</span>
+                    <Badge tone="warn">申请重置</Badge>
+                  </div>
+                  <p className="mt-1 truncate font-mono text-xs text-muted">{row.email}</p>
+                  <p className="mt-1 text-xs text-faint">申请于 {formatTime(row.requestedAt)}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    disabled={decideMut.isPending}
+                    onClick={() => decideMut.mutate({ id: row.id, action: "approve" })}
+                  >
+                    允许重置
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={decideMut.isPending}
+                    onClick={() => decideMut.mutate({ id: row.id, action: "reject" })}
+                  >
+                    拒绝
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : null}
 
       <Card className="overflow-hidden p-0">
         <div className="divide-y divide-border">
@@ -105,6 +170,7 @@ function UsersPage() {
                       {ROLE_LABEL[row.role as Role] ?? row.role}
                     </Badge>
                     {row.status !== "active" ? <Badge tone="danger">已停用</Badge> : null}
+                    {pendingIds.has(row.userId) ? <Badge tone="warn">申请重置</Badge> : null}
                   </div>
                   <p className="mt-1 truncate font-mono text-xs text-muted">{row.email}</p>
                   <p className="mt-1 text-xs text-faint">

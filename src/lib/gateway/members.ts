@@ -321,3 +321,26 @@ export async function setMemberPassword(userId: string, password: string): Promi
   if (!member) throw new Error("账号不存在");
   await writePassword(userId, password);
 }
+
+export async function listManagerMailboxes(): Promise<Array<{ userId: string; email: string; name: string }>> {
+  const sql = await getSql();
+  const rows = await sql<{ user_id: string; email: string; name: string }>`
+    select user_id, email, name from helix_members
+    where status = ${"active"} and (role = ${"superadmin"} or role = ${"admin"})
+    order by created_at asc
+  `;
+  const seen = new Set<string>();
+  const out: Array<{ userId: string; email: string; name: string }> = [];
+  for (const row of rows) {
+    const email = row.email.trim().toLowerCase();
+    if (!email || seen.has(email)) continue;
+    seen.add(email);
+    out.push({ userId: row.user_id, email, name: row.name });
+  }
+  return out;
+}
+
+export async function isManagerUser(userId: string): Promise<boolean> {
+  const member = await getMember(userId);
+  return Boolean(member && (member.role === "superadmin" || member.role === "admin"));
+}
